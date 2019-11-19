@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"regexp"
+	_"regexp"
 	"strconv"
 	"time"
 )
@@ -41,11 +41,11 @@ func main() {
 	go readConnection(conn)
 
 	for {
-		// reader := bufio.NewReader(os.Stdin)
-		// fmt.Print("> ")
-		// text, _ := reader.ReadString('\n')
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("> ")
+		text, _ := reader.ReadString('\n')
 
-		text := "hello World \n"
+		// text := "PING\r\n"
 
 		time.Sleep(10)
 
@@ -59,40 +59,10 @@ func main() {
 }
 
 func readConnection(conn net.Conn) {
-	for {
-		scanner := bufio.NewScanner(conn)
 
-		for {
-			ok := scanner.Scan()
-			text := scanner.Text()
+	for { 
 
-			command := handleCommands(text)
-			if !command {
-				fmt.Printf("\b\b** %s\n> ", text)
-			}
-
-			if !ok {
-				fmt.Println("Reached EOF on server connection.")
-				break
-			}
-		}
+		message, _ := bufio.NewReader(conn).ReadString('\n')
+		fmt.Print(message)
 	}
-}
-
-func handleCommands(text string) bool {
-	r, err := regexp.Compile("^%.*%$")
-	if err == nil {
-		if r.MatchString(text) {
-
-			switch {
-			case text == "%quit%":
-				fmt.Println("\b\bServer is leaving. Hanging up.")
-				os.Exit(0)
-			}
-
-			return true
-		}
-	}
-
-	return false
 }
