@@ -41,8 +41,8 @@ func main() {
 	go readConnection(conn)
 
 	for {
+		fmt.Print("8900: thunder_cli > ")
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("> ")
 		text, _ := reader.ReadString('\n')
 
 		// text := "PING\r\n"
@@ -64,5 +64,6 @@ func readConnection(conn net.Conn) {
 
 		message, _ := bufio.NewReader(conn).ReadString('\n')
 		fmt.Print(message)
+		fmt.Print("8900: thunder_cli > ")
 	}
 }
