@@ -4,7 +4,6 @@ package server
 import(
 	"net"
 	"pojo"
-	"fmt"
 )
 
 func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
