@@ -18,5 +18,4 @@ func CreateCacheDB(){
 	Storage[12] = make( map[string] []byte)
 	Storage[13] = make( map[string] []byte)
 	Storage[14] = make( map[string] []byte)
-	Storage[15] = make( map[string] []byte)
 }
