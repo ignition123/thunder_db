@@ -60,10 +60,18 @@ func main() {
 
 func readConnection(conn net.Conn) {
 
+	scanner := bufio.NewScanner(conn)
+
 	for { 
 
-		message, _ := bufio.NewReader(conn).ReadString('\n')
-		fmt.Print(message)
+		ok := scanner.Scan()
+
+		if !ok {
+			break
+		}
+
+		var message = scanner.Text()
+		fmt.Println(message)
 		fmt.Print("127.0.0.1:8900>")
 	}
 }
