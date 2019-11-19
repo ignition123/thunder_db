@@ -41,7 +41,7 @@ func main() {
 	go readConnection(conn)
 
 	for {
-		fmt.Print("8900: thunder_cli > ")
+		fmt.Print("127.0.0.1:8900>")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
 
@@ -64,6 +64,6 @@ func readConnection(conn net.Conn) {
 
 		message, _ := bufio.NewReader(conn).ReadString('\n')
 		fmt.Print(message)
-		fmt.Print("8900: thunder_cli > ")
+		fmt.Print("127.0.0.1:8900>")
 	}
 }

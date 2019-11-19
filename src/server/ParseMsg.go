@@ -3,7 +3,6 @@ package server
 import (
 	"pojo"
 	"net"
-	"fmt"
 	"encoding/json"
 )
 
@@ -20,8 +19,7 @@ func ParseMsg(msg string, conn net.Conn){
 		pojoErr := json.Unmarshal([]byte(msg), &QueryObject)
 
 		if pojoErr != nil{
-			fmt.Println("Invalid message...")
-			conn.Close()
+			conn.Write([]byte("Invalid message command... \r\n"))
 			return
 		}
 
