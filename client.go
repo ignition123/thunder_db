@@ -56,6 +56,7 @@ func main() {
 		text = strings.TrimRight(text, "\r\n")
 
 		if text == ""{
+			fmt.Print("127.0.0.1:8900>")
 			continue
 		}
 
@@ -75,6 +76,7 @@ func main() {
 
 		if err != nil {
 			fmt.Println("Error writing to stream."+ err.Error())
+			os.Exit(1)
 			break
 		}
 	}
@@ -111,6 +113,7 @@ func readConnection(conn net.Conn) {
 
 		if allZero(completePacket){
 			fmt.Println("Server disconnected")
+			os.Exit(1)
 			break
 		}
 
