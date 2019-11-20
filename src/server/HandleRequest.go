@@ -3,26 +3,48 @@ package server
 import (
 	"net"
 	"fmt"
-	"bufio"
 	"time"
+	"encoding/binary"
 )
+
+func allZero(s []byte) bool {
+    for _, v := range s {
+        if v != 0 {
+            return false
+        }
+    }
+    return true
+}
+
 
 func HandleRequest(conn net.Conn, messageQueue chan string){
 	
 	defer conn.Close()
 
-	scanner := bufio.NewScanner(conn)
+	sizeBuf := make([]byte, 4)
 
 	for {
 
 		time.Sleep(1)
 
-		ok := scanner.Scan()
+		conn.Read(sizeBuf)
 
-		if !ok {
+		packetSize := binary.LittleEndian.Uint32(sizeBuf)
+
+		if packetSize < 0{
+			continue
+		}
+
+		completePacket := make([]byte, packetSize)
+
+		conn.Read(completePacket)
+
+		if allZero(completePacket){
 			messageQueue <- "THUNDER_DISCONNECT"
 			break
 		}
+
+		var message = string(completePacket)
 
 		err := conn.SetReadDeadline(time.Now().Add(10 * time.Hour))
 
@@ -31,8 +53,6 @@ func HandleRequest(conn net.Conn, messageQueue chan string){
 			messageQueue <- "THUNDER_DISCONNECT"
 			break
 		}
-
-		var message = scanner.Text()
 
 		if len(message) > 0{
 			messageQueue <- message

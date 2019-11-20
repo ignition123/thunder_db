@@ -16,6 +16,9 @@ import (
 	_"regexp"
 	"strconv"
 	"time"
+	"bytes"
+	"encoding/binary"
+	"strings"
 )
 
 var host = flag.String("host", "localhost", "The hostname or IP to connect to; defaults to \"localhost\".")
@@ -40,17 +43,36 @@ func main() {
 
 	go readConnection(conn)
 
-	for {
-		fmt.Print("127.0.0.1:8900>")
-		reader := bufio.NewReader(os.Stdin)
-		text, _ := reader.ReadString('\n')
+	fmt.Print("127.0.0.1:8900>")
 
-		// text := "PING\r\n"
+	for {
 
 		time.Sleep(10)
 
+		reader := bufio.NewReader(os.Stdin)
+
+		text, _ := reader.ReadString('\n')
+
+		text = strings.TrimRight(text, "\r\n")
+
+		if text == ""{
+			continue
+		}
+
+		var packetBuffer bytes.Buffer
+
+		buff := make([]byte, 4)
+
+		binary.LittleEndian.PutUint32(buff, uint32(len(text)))
+	
+		packetBuffer.Write(buff)
+
+		packetBuffer.Write([]byte(text))
+
 		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
-		_, err := conn.Write([]byte(text))
+
+		_, err := conn.Write(packetBuffer.Bytes())
+
 		if err != nil {
 			fmt.Println("Error writing to stream."+ err.Error())
 			break
@@ -58,20 +80,45 @@ func main() {
 	}
 }
 
+func allZero(s []byte) bool {
+    for _, v := range s {
+        if v != 0 {
+            return false
+        }
+    }
+    return true
+}
+
 func readConnection(conn net.Conn) {
 
-	scanner := bufio.NewScanner(conn)
+	sizeBuf := make([]byte, 4)
 
 	for { 
 
-		ok := scanner.Scan()
+		time.Sleep(1)
 
-		if !ok {
+		conn.Read(sizeBuf)
+
+		packetSize := binary.LittleEndian.Uint32(sizeBuf)
+
+		if packetSize < 0{
+			continue
+		}
+
+		completePacket := make([]byte, packetSize)
+
+		conn.Read(completePacket)
+
+		if allZero(completePacket){
+			fmt.Println("Server disconnected")
 			break
 		}
 
-		var message = scanner.Text()
+		var message = string(completePacket)
+
 		fmt.Println(message)
-		fmt.Print("127.0.0.1:8900>")
+		fmt.Print("127.0.0.1:8900>")		
 	}
+
+	conn.Close()
 }

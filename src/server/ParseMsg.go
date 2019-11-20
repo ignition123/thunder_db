@@ -10,7 +10,7 @@ func ParseMsg(msg string, conn net.Conn){
 
 	if msg == "PING"{
 
-		conn.Write([]byte("PONG \r\n"))
+		WriteBytes(conn, []byte("PONG"))
 
 	}else{
 
@@ -19,7 +19,7 @@ func ParseMsg(msg string, conn net.Conn){
 		pojoErr := json.Unmarshal([]byte(msg), &QueryObject)
 
 		if pojoErr != nil{
-			conn.Write([]byte("Invalid message command... \r\n"))
+			WriteBytes(conn, []byte("Invalid message command..."))
 			return
 		}
 
