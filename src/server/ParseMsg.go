@@ -10,7 +10,7 @@ func ParseMsg(msg string, conn net.Conn){
 
 	if msg == "PING"{
 
-		WriteBytes(conn, []byte("PONG"))
+		WriteBytes(conn, 1, []byte("PONG"))
 
 	}else{
 
@@ -19,13 +19,17 @@ func ParseMsg(msg string, conn net.Conn){
 		pojoErr := json.Unmarshal([]byte(msg), &QueryObject)
 
 		if pojoErr != nil{
-			WriteBytes(conn, []byte("Invalid message command..."))
+			WriteBytes(conn, 2, []byte("Invalid message command..."))
 			return
 		}
 
 		// Cache Query SET, GET, DEL method to be invoked
 
 		if QueryObject.Ch != nil{
+			if *QueryObject.Ch.DB < 0 || *QueryObject.Ch.DB > 14{
+				WriteBytes(conn, 2, []byte("Invalid database selected, database lies between 0 - 14..."))
+				return
+			}
 			CallCacheMethod(conn, QueryObject)
 		}
 	}

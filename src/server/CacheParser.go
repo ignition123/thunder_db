@@ -15,20 +15,20 @@ func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
 		mutex.Lock()
 		Storage[*QueryObject.Ch.DB][*QueryObject.Ch.Set.Key] = []byte(*QueryObject.Ch.Set.Val)
 		mutex.Unlock()
-		WriteBytes(conn, []byte("OK"))
+		WriteBytes(conn, 1, []byte("OK"))
 	}else if QueryObject.Ch.Get != nil{
 		mutex.Lock()
 		var value = Storage[*QueryObject.Ch.DB][*QueryObject.Ch.Get.Key]
 		mutex.Unlock()
 		if len(value) == 0{
-			WriteBytes(conn, []byte("(nil)"))
+			WriteBytes(conn, 1, []byte("(nil)"))
 		}else{
-			WriteBytes(conn, value)
+			WriteBytes(conn, 1, value)
 		}
 	}else if  QueryObject.Ch.Del != nil{
 		mutex.Lock()
 		delete(Storage[*QueryObject.Ch.DB], *QueryObject.Ch.Del.Key)
 		mutex.Unlock()
-		WriteBytes(conn, []byte("OK"))
+		WriteBytes(conn, 1, []byte("OK"))
 	}
 }
