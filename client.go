@@ -9,16 +9,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"net"
 	"os"
-	_"regexp"
+	_ "regexp"
 	"strconv"
-	"time"
-	"bytes"
-	"encoding/binary"
 	"strings"
+	"time"
 )
 
 var host = flag.String("host", "localhost", "The hostname or IP to connect to; defaults to \"localhost\".")
@@ -55,17 +55,17 @@ func main() {
 
 		text = strings.TrimRight(text, "\r\n")
 
-		if text == ""{
+		if text == "" {
 			fmt.Print("127.0.0.1:8900>")
 			continue
 		}
 
 		var packetBuffer bytes.Buffer
 
-		buff := make([]byte, 4)
+		buff := make([]byte, 2)
 
-		binary.LittleEndian.PutUint32(buff, uint32(len(text)))
-	
+		binary.LittleEndian.PutUint16(buff, uint16(len(text)))
+
 		packetBuffer.Write(buff)
 
 		packetBuffer.Write([]byte(text))
@@ -75,7 +75,7 @@ func main() {
 		_, err := conn.Write(packetBuffer.Bytes())
 
 		if err != nil {
-			fmt.Println("Error writing to stream."+ err.Error())
+			fmt.Println("Error writing to stream." + err.Error())
 			os.Exit(1)
 			break
 		}
@@ -83,27 +83,37 @@ func main() {
 }
 
 func allZero(s []byte) bool {
-    for _, v := range s {
-        if v != 0 {
-            return false
-        }
-    }
-    return true
+	for _, v := range s {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func readConnection(conn net.Conn) {
 
-	sizeBuf := make([]byte, 4)
+	sizeBuf := make([]byte, 2)
 
-	for { 
+	statusBuf := make([]byte, 2)
+
+	for {
 
 		time.Sleep(1)
 
 		conn.Read(sizeBuf)
 
-		packetSize := binary.LittleEndian.Uint32(sizeBuf)
+		packetSize := binary.LittleEndian.Uint16(sizeBuf)
 
-		if packetSize < 0{
+		if packetSize < 0 {
+			continue
+		}
+
+		conn.Read(statusBuf)
+
+		packetStatus := binary.LittleEndian.Uint16(statusBuf)
+
+		if packetStatus != 1 && packetStatus != 2 {
 			continue
 		}
 
@@ -111,7 +121,7 @@ func readConnection(conn net.Conn) {
 
 		conn.Read(completePacket)
 
-		if allZero(completePacket){
+		if allZero(completePacket) {
 			fmt.Println("Server disconnected")
 			os.Exit(1)
 			break
@@ -119,8 +129,13 @@ func readConnection(conn net.Conn) {
 
 		var message = string(completePacket)
 
-		fmt.Println(message)
-		fmt.Print("127.0.0.1:8900>")		
+		if packetStatus == 1 {
+			fmt.Println(message)
+		} else {
+			fmt.Println("Exception: " + message)
+		}
+
+		fmt.Print("127.0.0.1:8900>")
 	}
 
 	conn.Close()

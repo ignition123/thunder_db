@@ -1,39 +1,39 @@
 package server
 
-import(
+import (
 	"bytes"
 	"encoding/binary"
-	"net"
 	"fmt"
+	"net"
 )
 
-func WriteBytes(conn net.Conn, message []byte){
+func WriteBytes(conn net.Conn, status int, message []byte) {
 
 	// buffer memory for packet size
 
 	var packetBuffer bytes.Buffer
 
-	buff := make([]byte, 4)
+	sizeBuff := make([]byte, 2)
 
-	binary.LittleEndian.PutUint16(buff, uint16(len(message) + 2))
+	binary.LittleEndian.PutUint16(sizeBuff, uint16(len(message)+2))
 
-	packetBuffer.Write(buff)
+	packetBuffer.Write(sizeBuff)
 
 	// buffer memory for status
 
-	buff := make([]byte, 2)
+	statusBuff := make([]byte, 2)
 
-	binary.LittleEndian.PutUint8(buff, uint8(len(message)))
+	binary.LittleEndian.PutUint16(statusBuff, uint16(status))
 
-	packetBuffer.Write(buff)
+	packetBuffer.Write(statusBuff)
 
 	// message in byte array
 
 	packetBuffer.Write(message)
-	
+
 	_, err := conn.Write(packetBuffer.Bytes())
 
 	if err != nil {
-		fmt.Println("Error writing to stream."+ err.Error())
+		fmt.Println("Error writing to stream." + err.Error())
 	}
 }

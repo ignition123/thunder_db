@@ -1,27 +1,26 @@
 package server
 
 import (
-	"net"
-	"fmt"
-	"time"
 	"encoding/binary"
+	"fmt"
+	"net"
+	"time"
 )
 
 func allZero(s []byte) bool {
-    for _, v := range s {
-        if v != 0 {
-            return false
-        }
-    }
-    return true
+	for _, v := range s {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
 }
 
+func HandleRequest(conn net.Conn, messageQueue chan string) {
 
-func HandleRequest(conn net.Conn, messageQueue chan string){
-	
 	defer conn.Close()
 
-	sizeBuf := make([]byte, 4)
+	sizeBuf := make([]byte, 2)
 
 	for {
 
@@ -29,9 +28,9 @@ func HandleRequest(conn net.Conn, messageQueue chan string){
 
 		conn.Read(sizeBuf)
 
-		packetSize := binary.LittleEndian.Uint32(sizeBuf)
+		packetSize := binary.LittleEndian.Uint16(sizeBuf)
 
-		if packetSize < 0{
+		if packetSize < 0 {
 			continue
 		}
 
@@ -39,7 +38,7 @@ func HandleRequest(conn net.Conn, messageQueue chan string){
 
 		conn.Read(completePacket)
 
-		if allZero(completePacket){
+		if allZero(completePacket) {
 			messageQueue <- "THUNDER_DISCONNECT"
 			break
 		}
@@ -49,12 +48,12 @@ func HandleRequest(conn net.Conn, messageQueue chan string){
 		err := conn.SetReadDeadline(time.Now().Add(10 * time.Hour))
 
 		if err != nil {
-			fmt.Println("Error in tcp connection: "+err.Error())
+			fmt.Println("Error in tcp connection: " + err.Error())
 			messageQueue <- "THUNDER_DISCONNECT"
 			break
 		}
 
-		if len(message) > 0{
+		if len(message) > 0 {
 			messageQueue <- message
 		}
 	}
