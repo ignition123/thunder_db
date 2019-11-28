@@ -13,12 +13,14 @@
                alert("WebSocket is supported by your Browser!");
 
                // Let us open a web socket
-               var ws = new WebSocket("ws://localhost:9100/chat");
+               var ws = new WebSocket("ws://localhost:9100");
 
                ws.onopen = function() {
 
                   // var msg = "sudeep12344545454";
                   // Web Socket is connected, send data using send()
+                  ws.send(msg);
+                  ws.send(msg);
                   ws.send(msg);
                   ws.send(msg);
                   ws.send(msg);
@@ -53,7 +55,7 @@
 
 <body>
 <div id = "sse">
-    <a href = "javascript:WebSocketTest()">Run WebSocket</a>
+    <a href = "javascript:WebSocketTest()">Run</a>
 </div>
 
 </body>

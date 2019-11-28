@@ -10,7 +10,7 @@ const os = require("os");
 
 console.log(os.endianness());
 
-server.on("upgrade",function(req,socket)
+server.addListener("upgrade",function(req,socket)
 {
     var respHeader = crypto.createHash('sha1').update(req.headers["sec-websocket-key"]+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest('base64');
 
@@ -26,170 +26,222 @@ server.on("upgrade",function(req,socket)
 
     socket.setKeepAlive(true);
 
-    socket.setTimeout(120000);
+    var msgParse = new SocketParser(socket);
 
-    socket.on('timeout', () => {
-      console.log('socket timeout');
-      socket.end();
+    socket.addListener("data",function(buffer)
+    {    
+        msgParse.GetPayload(buffer);
     });
 
-    var msgParse = new SocketParser();
-
-    socket.on("data",function(buffer)
-    {
-        console.log(buffer);
-        // msgParse.tempArr.push(buffer);
-        // msgParse.totalBuffer = Buffer.concat(msgParse.tempArr);
-        // msgParse.GetPayload(socket);
-    });
-
-    socket.on("end",function()
+    socket.addListener("end",function()
     {
         console.log("ok");
     });
 
-    socket.on("error",function(err)
+    socket.addListener("error",function(err)
     {
         console.log(err);
-    })
+    });
 });
 
 class SocketParser
 {
-    constructor()
+    constructor(socket)
     {
-        this.tempArr = [];
-        this.totalBuffer = [];
-        this.stateFlag = 0;
-        this.bufferCount = 0;
-        this.status = true;
-    }   
+        this.prevfin;
+        this.prevOpCode;
+        this.socket = socket;
+        this.prevPacket = [];
+        this.curPacket = [];
+    }  
 
-    GetPayload(socket)
+    GetPayload(buffer)
     {
-        while(this.totalBuffer.length > 0)
+        if(this.prevPacket.length > 0 && this.prevfin === 0)
         {
-            if(!this.status)
-            {
-                continue;
-            }
-            
-            var firstByte = this.totalBuffer[0];
+            var firstByte = buffer[0];
 
-            var fin = (firstByte & 0x80) >>> 7;
+            this.prevfin = (firstByte & 0x80) >>> 7;
 
-            console.log("fin: "+fin);
+            this.prevOpCode = firstByte & 0x0f;
 
-            var opcode = firstByte & 0x0f;
+            var secondByte = buffer[1];
 
-            var payloadType;
+            var payloadLength = (secondByte & 0x7f);
+            var offset = 2;
 
-            if ( opcode >= 0x3 && opcode <= 0x7  
-                ||
-                opcode >= 0xB && opcode <= 0xF)
+            // console.log("current fin is: "+this.prevfin);
+            // console.log("current prevOpCode is: "+this.prevOpCode);
+            // console.log("payload length is: "+payloadLength);
+
+            if(payloadLength == 126)
             {
-                console.log("Special frame recieved");
-                return;
+                payloadLength = buffer.slice(offset, 4);
+
+                payloadLength = payloadLength.readUInt16BE(0);
             }
-            
-            if(opcode == 0x0)
+            else if(payloadLength == 127)
             {
-                payloadType = 'continuation';
+                payloadLength = buffer.slice(offset, 16);
+
+                payloadLength = payloadLength.readUInt64BE(0);
             }
-            else if(opcode == 0x1)
+
+            this.curPacket = Buffer.concat([, buffer]);
+
+            this.prevPacket = [];
+
+            this.parseMessage();
+        }
+        else
+        {
+            if(this.curPacket.length === 0)
             {
-                payloadType = 'text';
-            }
-            else if(opcode == 0x2)
-            {
-                payloadType = 'binary';
-            }
-            else if(opcode == 0x8)
-            {
-                payloadType = 'connection close';
-            }
-            else if(opcode == 0x9)
-            {
-                payloadType = 'ping';
-            }
-            else if(opcode == 0xA)
-            {
-                payloadType = 'pong';
+                this.curPacket = buffer;
             }
             else
             {
-                payloadType = 'reservedfornon-control';
-            }
-            
-            console.log(payloadType);
-
-            if(payloadType === "reservedfornon-control")
-            {
-                return;
+                this.curPacket = Buffer.concat([this.curPacket, buffer]);
             }
 
-            this.status = false;
-
-            if(fin === 1 && (payloadType === "text" || payloadType === "binary"))
+            if(this.prevfin === undefined || this.prevfin === 1)
             {
-                this.parseMessage(socket)
+                var firstByte = this.curPacket[0];
+
+                this.prevfin = (firstByte & 0x80) >>> 7;
+
+                this.prevOpCode = firstByte & 0x0f;
+
+                var payloadType;
+
+                if ( this.prevOpCode >= 0x3 && this.prevOpCode <= 0x7  
+                ||
+                this.prevOpCode >= 0xB && this.prevOpCode <= 0xF)
+                {
+                    // console.log("Special frame recieved");
+                    return;
+                }
+
+                if(this.prevOpCode == 0x0)
+                {
+                    payloadType = 'continuation';
+                }
+                else if(this.prevOpCode == 0x1)
+                {
+                    payloadType = 'text';
+                }
+                else if(this.prevOpCode == 0x2)
+                {
+                    payloadType = 'binary';
+                }
+                else if(this.prevOpCode == 0x8)
+                {
+                    payloadType = 'connection close';
+                }
+                else if(this.prevOpCode == 0x9)
+                {
+                    payloadType = 'ping';
+                }
+                else if(this.prevOpCode == 0xA)
+                {
+                    payloadType = 'pong';
+                }
+                else
+                {
+                    payloadType = 'reservedfornon-control';
+                }
+                
+                console.log(payloadType);
+                console.log("fin: "+this.prevfin);
+
+                if(payloadType === "continuation")
+                {
+                    this.parseMessage();
+                    return;
+                }
+
+                if(this.prevfin === 1 && (payloadType === "text" || payloadType === "binary"))
+                {
+                    this.parseMessage();
+                    return;
+                }
+            }
+            else if(this.prevfin === undefined || this.prevfin === 0)
+            {
+                if(this.prevPacket.length === 0)
+                {
+                    this.prevPacket = this.curPacket;
+                }
+                else
+                {
+                    this.prevPacket = Buffer.concat([this.prevPacket, this.curPacket]);
+                }
             }
         }
     }
 
-    isHex(h) {
-        var a = parseInt(h,16);
-        return (a.toString(16) === h)
-    }
-
-    parseMessage(socket)
+    parseMessage(consecutivePackLen)
     {
-        var secondByte = this.totalBuffer[1];
+        var secondByte = this.curPacket[1];
 
         var mask = (secondByte & 0x80) >>> 7;
 
         if (mask === 0)
         {
-            console.log('browse should always mask the payload data');
+            console.log('browse should always mask the payload data2');
             return;
         }
 
         var payloadLength = (secondByte & 0x7f);
-
-        var decoded = [],masks = [];
+        var decoded = [];
         var text = "";
-
-        var indexFirstMask = 2 ;
+        var offset = 2;
 
         if(payloadLength == 126)
         {
-            payloadLength = this.totalBuffer.slice(indexFirstMask, (indexFirstMask + 2));
+            payloadLength = this.curPacket.slice(offset, 4);
 
             payloadLength = payloadLength.readUInt16BE(0);
-            
-            indexFirstMask = 4;
+
+            offset += 2;
         }
         else if(payloadLength == 127)
         {
-            indexFirstMask = 10;
+            payloadLength = this.curPacket.slice(offset, 16);
+
+            payloadLength = payloadLength.readUInt64BE(0);
+
+            offset += 8;
         }
 
-        masks = this.totalBuffer.slice(indexFirstMask, (indexFirstMask + 4));
-
-        var indexFirstDataByte = indexFirstMask + 4;
-
-        for (var i = indexFirstDataByte, j = 0; i < (indexFirstDataByte + payloadLength); i++,j++) {
-            decoded[j] = this.totalBuffer[i] ^ masks[j % 4];
-            text += String.fromCharCode(this.totalBuffer[i] ^ masks[j % 4]);
+        if(consecutivePackLen)
+        {
+            payloadLength += consecutivePackLen;
         }
 
-        this.totalBuffer = this.totalBuffer.slice(indexFirstDataByte + payloadLength);
+        console.log("payloadLength:",payloadLength);
+        console.log("currentBuffer:",this.curPacket.length);
 
-        console.log(payloadLength);
+        if(payloadLength >= this.curPacket.length)
+        {
+            return;
+        }
 
-        this.status = true;
+        var masks = this.curPacket.slice(offset, (offset + 4));
 
-        fs.appendFileSync("sample1.txt", text+"\r\n");
+        var actualPayload = offset + 4;
+
+        var totalPayloadChunk = actualPayload + payloadLength;
+
+        for (var i = actualPayload, j = 0; i < totalPayloadChunk; i++,j++)
+        {
+            decoded[j] = this.curPacket[i] ^ masks[j % 4];
+            text += String.fromCharCode(this.curPacket[i] ^ masks[j % 4]);
+        }
+
+        this.curPacket = this.curPacket.slice(totalPayloadChunk);
+
+        fs.appendFileSync("sample1.txt", text.length+"\r\n");
 
         var message = "sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568religaresudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep123456sudeep1234568religare";
         
@@ -236,7 +288,7 @@ class SocketParser
 
         var body = Buffer.from(arr);
 
-       socket.write(body);
+       this.socket.write(body);
     }
 }
 
