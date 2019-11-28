@@ -168,16 +168,53 @@ class SocketParser
             }
             else if(this.prevfin === undefined || this.prevfin === 0)
             {
-                if(this.prevPacket.length === 0)
-                {
-                    this.prevPacket = this.curPacket;
-                }
-                else
-                {
-                    this.prevPacket = Buffer.concat([this.prevPacket, this.curPacket]);
-                }
+                this.getprevPacketlen();
             }
         }
+    }
+
+    getprevPacketlen()
+    {
+        var secondByte = this.curPacket[1];
+
+        var mask = (secondByte & 0x80) >>> 7;
+
+        if (mask === 0)
+        {
+            console.log('browse should always mask the payload data2');
+            return;
+        }
+
+        var payloadLength = (secondByte & 0x7f);
+
+        var offset = 2;
+
+        if(payloadLength == 126)
+        {
+            payloadLength = this.curPacket.slice(offset, 4);
+
+            payloadLength = payloadLength.readUInt16BE(0);
+
+            offset += 2;
+        }
+        else if(payloadLength == 127)
+        {
+            payloadLength = this.curPacket.slice(offset, 16);
+
+            payloadLength = payloadLength.readUInt64BE(0);
+
+            offset += 8;
+        }
+
+        this.prevPayLoadLen = payloadLength;
+
+        var masks = this.curPacket.slice(offset, (offset + 4));
+
+        var actualPayload = offset + 4;
+
+        var totalPayloadChunk = actualPayload + payloadLength;
+
+        this.prevPacket = this.curPacket.slice(totalPayloadChunk);
     }
 
     parseMessage(consecutivePackLen)
