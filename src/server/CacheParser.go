@@ -127,6 +127,11 @@ func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
 			}
 		}
 
+		if len(result) == 0{
+			WriteBytes(conn, 1, []byte("(nil)"))
+			return
+		}
+
 		pagesJson, err := json.Marshal(result)
 
 		if err != nil{
