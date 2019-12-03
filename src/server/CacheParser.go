@@ -5,13 +5,15 @@ import(
 	"net"
 	"pojo"
 	"sync"
-	_"fmt"
+	"fmt"
 	"encoding/json"
 )
 
 var mutex = &sync.Mutex{}
 
 func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
+
+	fmt.Println("ok")
 	
 	if QueryObject.Ch.Set != nil{
 
@@ -102,6 +104,7 @@ func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
 		}
 		
 		mutex.Unlock()
+		
 		WriteBytes(conn, 1, []byte("OK"))
 		
 		return
@@ -127,6 +130,8 @@ func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
 			}
 		}
 
+		mutex.Unlock()
+
 		if len(result) == 0{
 			WriteBytes(conn, 1, []byte("(nil)"))
 			return
@@ -139,8 +144,6 @@ func CallCacheMethod(conn net.Conn, QueryObject pojo.QueryParser){
 			return
 		}
 		
-		mutex.Unlock()
-
 		WriteBytes(conn, 1, []byte(pagesJson))
 		
 		return
