@@ -13,9 +13,9 @@ func WriteBytes(conn net.Conn, status int, message []byte) {
 
 	var packetBuffer bytes.Buffer
 
-	sizeBuff := make([]byte, 2)
+	sizeBuff := make([]byte, 4)
 
-	binary.LittleEndian.PutUint16(sizeBuff, uint16(len(message)+2))
+	binary.LittleEndian.PutUint32(sizeBuff, uint32(len(message)+2))
 
 	packetBuffer.Write(sizeBuff)
 

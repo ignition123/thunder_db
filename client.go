@@ -62,9 +62,9 @@ func main() {
 
 		var packetBuffer bytes.Buffer
 
-		buff := make([]byte, 2)
+		buff := make([]byte, 4)
 
-		binary.LittleEndian.PutUint16(buff, uint16(len(text)))
+		binary.LittleEndian.PutUint32(buff, uint32(len(text)))
 
 		packetBuffer.Write(buff)
 
@@ -93,7 +93,7 @@ func allZero(s []byte) bool {
 
 func readConnection(conn net.Conn) {
 
-	sizeBuf := make([]byte, 2)
+	sizeBuf := make([]byte, 4)
 
 	statusBuf := make([]byte, 2)
 
@@ -103,7 +103,7 @@ func readConnection(conn net.Conn) {
 
 		conn.Read(sizeBuf)
 
-		packetSize := binary.LittleEndian.Uint16(sizeBuf)
+		packetSize := binary.LittleEndian.Uint32(sizeBuf)
 
 		if packetSize < 0 {
 			continue

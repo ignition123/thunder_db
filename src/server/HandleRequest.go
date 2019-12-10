@@ -20,7 +20,7 @@ func HandleRequest(conn net.Conn, messageQueue chan string) {
 
 	defer conn.Close()
 
-	sizeBuf := make([]byte, 2)
+	sizeBuf := make([]byte, 4)
 
 	for {
 
@@ -28,7 +28,7 @@ func HandleRequest(conn net.Conn, messageQueue chan string) {
 
 		conn.Read(sizeBuf)
 
-		packetSize := binary.LittleEndian.Uint16(sizeBuf)
+		packetSize := binary.LittleEndian.Uint32(sizeBuf)
 
 		if packetSize < 0 {
 			continue
